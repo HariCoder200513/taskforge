@@ -1,0 +1,72 @@
+# Deployment — Backend CI/CD (Jenkins on EC2 → Docker Hub)
+
+This sets up **continuous delivery on every git push**: a GitHub webhook triggers
+Jenkins (running on an EC2 instance), which builds the backend, runs the tests,
+builds a Docker image and pushes it to **Docker Hub**.
+
+```
+GitHub push ──webhook──► Jenkins (EC2) ──► mvn build+test ──► docker build ──► docker push → Docker Hub
+```
+
+> Scope: this pushes the **image**. Running that image on a server (ECS/VM) is a
+> separate step, deferred for now (ARCHITECTURE.md step 16). The frontend
+> (Netlify) is a later milestone — no frontend exists yet.
+
+## Prerequisites you must provide
+
+1. **AWS credentials** that work (`aws sts get-caller-identity` must succeed).
+2. **An EC2 key pair** in your target region (for SSH / reading the Jenkins password).
+3. **A Docker Hub account** + an **access token** (Docker Hub → Account Settings →
+   Security → New Access Token). Used by Jenkins to push.
+4. **A GitHub repository** (we push this repo to it) and permission to add a webhook.
+
+## 1. Provision Jenkins on EC2
+
+```bash
+KEY_NAME=<your-ec2-keypair> AWS_REGION=us-east-2 SSH_CIDR=<your-ip>/32 \
+  ./infra/deploy-jenkins.sh
+```
+
+This creates (via `infra/jenkins-ec2.yaml`): a security group (22 + 8080), an
+IAM role (SSM Session Manager), and a `t3.medium` Amazon Linux 2023 instance whose
+user-data installs Docker, JDK 21, Maven, Git and Jenkins, and adds the `jenkins`
+user to the `docker` group.
+
+The stack outputs the **Jenkins URL** and the command to read the initial admin
+password. First boot takes a few minutes while packages install.
+
+> Cost note: a running `t3.medium` + 30 GB gp3 is billable. `aws cloudformation
+> delete-stack --stack-name taskforge-jenkins` tears it all down.
+
+## 2. Configure Jenkins
+
+1. Open the Jenkins URL, unlock with the initial admin password, install
+   suggested plugins, and create an admin user.
+2. Install plugins (if not already): **Git**, **Pipeline**, **Docker Pipeline**,
+   **GitHub** (and **GitHub Branch Source** for multibranch).
+3. Add credentials → **Username with password**, id **`dockerhub-creds`**:
+   username = your Docker Hub username, password = the **access token**.
+4. Edit `Jenkinsfile` → set `DOCKERHUB_REPO` to `your-dockerhub-username/taskforge-backend`.
+
+## 3. Create the Jenkins job
+
+Use a **Multibranch Pipeline** (recommended) pointed at the GitHub repo. Jenkins
+auto-discovers the root `Jenkinsfile` and builds every branch/PR. Enable
+**"Scan by webhook"** or periodic scanning.
+
+## 4. Wire the GitHub webhook (build on every push)
+
+- GitHub repo → Settings → Webhooks → Add webhook
+- Payload URL: `http://<jenkins-public-dns>:8080/github-webhook/`
+- Content type: `application/json`
+- Events: **Just the push event** (add PRs if desired)
+
+Push a commit; Jenkins should start a build within seconds, ending with the image
+pushed to Docker Hub (`DOCKERHUB_REPO:<git-sha>`, plus `:latest` on `main`).
+
+## Security notes
+
+- Narrow `SshAllowedCidr` to your IP. Keep 8080 reachable for GitHub webhooks, or
+  use GitHub's published webhook IP ranges.
+- The Docker Hub token lives only in Jenkins credentials, never in the repo.
+- Prefer a Docker Hub **access token** over your account password.
