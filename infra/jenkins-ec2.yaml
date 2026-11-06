@@ -1,0 +1,107 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  TaskForge CI — a single EC2 instance running Jenkins with Docker, JDK 21, Maven
+  and Git preinstalled, ready to build the backend image and push it to Docker Hub.
+
+Parameters:
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Existing EC2 key pair for SSH access.
+  InstanceType:
+    Type: String
+    Default: t3.medium
+    AllowedValues: [t3.small, t3.medium, t3.large]
+    Description: >
+      t3.medium (4 GB) recommended — Jenkins + Maven + Testcontainers Postgres
+      is tight on t3.small.
+  SshAllowedCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: CIDR allowed to SSH (22). Narrow this to your IP/32.
+  JenkinsAllowedCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: >
+      CIDR allowed to reach the Jenkins UI + webhook (8080). GitHub webhooks need
+      this reachable; Jenkins has its own login. Narrow if you use a static egress.
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+
+Resources:
+  JenkinsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: TaskForge Jenkins access
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref SshAllowedCidr
+          Description: SSH
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: !Ref JenkinsAllowedCidr
+          Description: Jenkins UI + webhook
+
+  JenkinsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ec2.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        # Enables AWS Systems Manager Session Manager (browser/CLI shell, no SSH needed).
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  JenkinsInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref JenkinsRole]
+
+  JenkinsInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      ImageId: !Ref LatestAmiId
+      IamInstanceProfile: !Ref JenkinsInstanceProfile
+      SecurityGroupIds: [!Ref JenkinsSecurityGroup]
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 30
+            VolumeType: gp3
+            DeleteOnTermination: true
+      Tags:
+        - Key: Name
+          Value: taskforge-jenkins
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          set -euxo pipefail
+          dnf update -y
+          dnf install -y git docker java-21-amazon-corretto maven wget
+          systemctl enable --now docker
+          # Jenkins stable repo
+          wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat-stable/jenkins.repo
+          rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
+          dnf install -y jenkins
+          # Let the jenkins user drive Docker
+          usermod -aG docker jenkins
+          systemctl enable jenkins
+          systemctl start jenkins
+
+Outputs:
+  JenkinsUrl:
+    Description: Jenkins UI (first boot takes a few minutes while packages install)
+    Value: !Sub "http://${JenkinsInstance.PublicDnsName}:8080"
+  PublicIp:
+    Value: !GetAtt JenkinsInstance.PublicIp
+  InitialAdminPasswordCommand:
+    Description: SSH command to read the Jenkins unlock password
+    Value: !Sub "ssh ec2-user@${JenkinsInstance.PublicDnsName} sudo cat /var/lib/jenkins/secrets/initialAdminPassword"
