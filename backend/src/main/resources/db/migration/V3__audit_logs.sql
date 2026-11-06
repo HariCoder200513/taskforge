@@ -8,7 +8,7 @@ CREATE TABLE audit_logs (
     action        text        NOT NULL,
     resource_type text,
     resource_id   text,
-    ip            inet,
+    ip            text,
     request_id    text,
     metadata      jsonb,
     created_at    timestamptz NOT NULL DEFAULT now()

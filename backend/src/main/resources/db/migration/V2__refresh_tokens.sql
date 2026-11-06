@@ -13,7 +13,7 @@ CREATE TABLE refresh_tokens (
     revoked_at          timestamptz,
     created_at          timestamptz NOT NULL DEFAULT now(),
     user_agent          text,
-    ip                  inet                           -- real client IP (trusted forwarded header)
+    ip                  text                           -- real client IP (trusted forwarded header)
 );
 
 CREATE INDEX idx_refresh_tokens_user_id    ON refresh_tokens(user_id);
