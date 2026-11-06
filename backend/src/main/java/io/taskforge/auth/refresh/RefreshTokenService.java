@@ -28,10 +28,14 @@ public class RefreshTokenService {
     private static final int TOKEN_BYTES = 32; // 256-bit
 
     private final RefreshTokenRepository repository;
+    private final RefreshTokenFamilyRevoker familyRevoker;
     private final AuthProperties props;
 
-    public RefreshTokenService(RefreshTokenRepository repository, AuthProperties props) {
+    public RefreshTokenService(RefreshTokenRepository repository,
+                               RefreshTokenFamilyRevoker familyRevoker,
+                               AuthProperties props) {
         this.repository = repository;
+        this.familyRevoker = familyRevoker;
         this.props = props;
     }
 
@@ -80,8 +84,10 @@ public class RefreshTokenService {
                         current.getAbsoluteExpiresAt(), userAgent, ip, now);
                 return new Rotated(current.getUserId(), sibling.rawToken());
             }
-            // Reuse outside the grace window → replay. Revoke the whole family.
-            repository.revokeFamily(current.getFamilyId(), now);
+            // Reuse outside the grace window → replay. Revoke the whole family in
+            // its own transaction so it persists even though we throw next (which
+            // rolls back this rotate() transaction).
+            familyRevoker.revokeFamily(current.getFamilyId(), now);
             throw new ReplayDetectedException(current.getUserId(), current.getFamilyId());
         }
 
