@@ -1,0 +1,26 @@
+# Java / Maven
+target/
+*.class
+*.jar
+*.war
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# OS
+.DS_Store
+
+# Node / frontend (added in the frontend milestone)
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
