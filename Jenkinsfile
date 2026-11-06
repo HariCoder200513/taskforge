@@ -19,6 +19,9 @@ pipeline {
     }
 
     environment {
+        // The node's default Maven runs on Java 17; force JDK 21 for the build.
+        JAVA_HOME = '/usr/lib/jvm/java-21-amazon-corretto'
+        PATH = "/usr/lib/jvm/java-21-amazon-corretto/bin:${PATH}"
         MAVEN_ARGS = '-B -ntp'
         DOCKERHUB_REPO = 'haridockersabre/taskforge-backend'
         IMAGE_TAG = "${env.GIT_COMMIT ? env.GIT_COMMIT.take(7) : env.BUILD_NUMBER}"
