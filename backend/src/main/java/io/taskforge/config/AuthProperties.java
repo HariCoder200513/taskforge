@@ -23,6 +23,7 @@ public record AuthProperties(
             String issuer,
             String audience,
             Duration accessTokenTtl,
+            Duration clockSkew,
             String activeKid,
             String publicKeyPem,
             String privateKeyPem

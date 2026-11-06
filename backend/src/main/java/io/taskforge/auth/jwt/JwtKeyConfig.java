@@ -16,7 +16,8 @@ import org.springframework.security.oauth2.jwt.JwtClaimNames;
 import org.springframework.security.oauth2.jwt.JwtClaimValidator;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
-import org.springframework.security.oauth2.jwt.JwtValidators;
+import org.springframework.security.oauth2.jwt.JwtIssuerValidator;
+import org.springframework.security.oauth2.jwt.JwtTimestampValidator;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
@@ -92,11 +93,12 @@ public class JwtKeyConfig {
     }
 
     private OAuth2TokenValidator<Jwt> tokenValidator() {
-        OAuth2TokenValidator<Jwt> withIssuer = JwtValidators.createDefaultWithIssuer(props.jwt().issuer());
+        OAuth2TokenValidator<Jwt> timestamp = new JwtTimestampValidator(props.jwt().clockSkew());
+        OAuth2TokenValidator<Jwt> issuer = new JwtIssuerValidator(props.jwt().issuer());
         OAuth2TokenValidator<Jwt> audience = new JwtClaimValidator<List<String>>(
                 JwtClaimNames.AUD,
                 aud -> aud != null && aud.contains(props.jwt().audience()));
-        return new DelegatingOAuth2TokenValidator<>(withIssuer, audience);
+        return new DelegatingOAuth2TokenValidator<>(timestamp, issuer, audience);
     }
 
     /** The active signing kid, exposed for the encoder header. */

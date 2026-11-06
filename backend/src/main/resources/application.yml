@@ -5,6 +5,11 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/taskforge}
     username: ${DB_USERNAME:taskforge}
     password: ${DB_PASSWORD:taskforge}
+    hikari:
+      data-source-properties:
+        # Send String params as untyped so Postgres infers citext (case-insensitive)
+        # instead of comparing the citext email column as plain text.
+        stringtype: unspecified
   jpa:
     hibernate:
       # Flyway owns the schema entirely; Hibernate neither creates nor validates
@@ -33,6 +38,9 @@ auth:
     issuer: taskforge
     audience: taskforge-api
     access-token-ttl: 15m
+    # Allowed clock drift when validating exp/iat. Issuer and validator are the
+    # same server, so this can be small.
+    clock-skew: 30s
     active-kid: ${AUTH_JWT_KID:dev}
     # PEM keys for RS256. If blank, an RSA keypair is generated at startup
     # (DEV ONLY — tokens won't survive a restart). Prod loads from Secrets Manager.
