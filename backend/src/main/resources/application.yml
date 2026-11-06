@@ -7,8 +7,9 @@ spring:
     password: ${DB_PASSWORD:taskforge}
   jpa:
     hibernate:
-      # Flyway owns the schema; Hibernate only validates against it.
-      ddl-auto: validate
+      # Flyway owns the schema entirely; Hibernate neither creates nor validates
+      # it (custom PG types citext/jsonb do not round-trip through validate).
+      ddl-auto: none
     open-in-view: false
     properties:
       hibernate.jdbc.time_zone: UTC
@@ -26,3 +27,35 @@ management:
     health:
       probes:
         enabled: true
+
+auth:
+  jwt:
+    issuer: taskforge
+    audience: taskforge-api
+    access-token-ttl: 15m
+    active-kid: ${AUTH_JWT_KID:dev}
+    # PEM keys for RS256. If blank, an RSA keypair is generated at startup
+    # (DEV ONLY — tokens won't survive a restart). Prod loads from Secrets Manager.
+    public-key-pem: ${AUTH_JWT_PUBLIC_KEY:}
+    private-key-pem: ${AUTH_JWT_PRIVATE_KEY:}
+  refresh:
+    sliding-ttl: 14d
+    absolute-ttl: 30d
+    grace-window: 30s
+    cookie-name: tf_refresh
+    cookie-path: /api/v1/auth
+    cookie-secure: ${AUTH_COOKIE_SECURE:true}
+  csrf:
+    header-name: X-CSRF-Token
+    # Origins accepted on cookie endpoints. In prod (same-origin via Netlify
+    # proxy) requests carry no cross-origin Origin; set the app origin for dev.
+    allowed-origins: ${AUTH_CSRF_ORIGINS:http://localhost:5173}
+  cors:
+    # Disabled in prod (same-origin). Enable for local dev hitting the API directly.
+    enabled: ${AUTH_CORS_ENABLED:false}
+    allowed-origins: ${AUTH_CORS_ORIGINS:http://localhost:5173}
+  proxy:
+    # When set, the backend trusts the forwarded client-IP header only on
+    # requests carrying this secret (injected by the Netlify proxy).
+    secret: ${AUTH_PROXY_SECRET:}
+    client-ip-header: X-Nf-Client-Connection-Ip
