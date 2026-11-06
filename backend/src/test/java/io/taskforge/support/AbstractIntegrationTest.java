@@ -28,6 +28,7 @@ public abstract class AbstractIntegrationTest {
         // round-trips over the test's plain HTTP client.
         registry.add("auth.refresh.cookie-secure", () -> "false");
         registry.add("auth.jwt.access-token-ttl", () -> "2s");
+        registry.add("auth.jwt.clock-skew", () -> "0s");
         registry.add("auth.refresh.grace-window", () -> "2s");
     }
 }
