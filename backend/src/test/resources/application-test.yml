@@ -1,0 +1,10 @@
+# Test-profile overrides (merged over application.yml). Activated by
+# @ActiveProfiles("test") on the integration-test base class. The datasource
+# itself is supplied dynamically by Testcontainers @ServiceConnection.
+auth:
+  jwt:
+    access-token-ttl: 2s   # so expiry is testable quickly
+    clock-skew: 0s         # no skew, so a 2s token is actually expired after 2s
+  refresh:
+    cookie-secure: false   # cookie round-trips over the test's plain HTTP client
+    grace-window: 1s       # small window: multi-tab reuse within 1s, replay after

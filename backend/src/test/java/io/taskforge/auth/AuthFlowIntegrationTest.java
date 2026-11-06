@@ -125,7 +125,7 @@ class AuthFlowIntegrationTest extends AbstractIntegrationTest {
         assertThat(rotated.getStatusCode()).isEqualTo(HttpStatus.OK);
         String newCookie = refreshCookie(rotated);
 
-        // Wait past the 2s grace window, then replay the old (used) cookie.
+        // Wait well past the grace window, then replay the old (used) cookie.
         Thread.sleep(2500);
         ResponseEntity<JsonNode> replay = refresh(cookie);
         assertThat(replay.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
