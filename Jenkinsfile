@@ -20,8 +20,7 @@ pipeline {
 
     environment {
         MAVEN_ARGS = '-B -ntp'
-        // CHANGE THIS to your Docker Hub namespace/repository.
-        DOCKERHUB_REPO = 'YOUR_DOCKERHUB_USERNAME/taskforge-backend'
+        DOCKERHUB_REPO = 'haridockersabre/taskforge-backend'
         IMAGE_TAG = "${env.GIT_COMMIT ? env.GIT_COMMIT.take(7) : env.BUILD_NUMBER}"
     }
 
