@@ -1,34 +1,28 @@
-// Minimal CI for TaskForge — build + test on every push/PR.
-// Scope (development order step 3): backend compile + integration tests
-// (Testcontainers/PostgreSQL). Deployment stages (frontend build, npm audit,
-// Netlify deploy, smoke tests) are added at step 14 (full Jenkins CI/CD).
+// TaskForge CI/CD — runs on every push (GitHub webhook / multibranch scan).
+// Stages: build -> test (Testcontainers/Postgres) -> docker build -> push to Docker Hub.
 //
-// Agent prerequisite: the build runs inside a Maven+JDK21 container that needs
-// access to a Docker daemon for Testcontainers. We mount the host Docker socket
-// (Docker-outside-of-Docker) and use the host network so the JVM can reach the
-// ephemeral Postgres container's published port. See docs/CI.md.
+// Runs on the Jenkins node directly (`agent any`). The node must have JDK 21,
+// Maven, Git and Docker installed and the `jenkins` user in the `docker` group
+// — the EC2 bootstrap in infra/jenkins-ec2.yaml provisions exactly that.
+//
+// Required Jenkins credentials:
+//   - dockerhub-creds : Username/Password = Docker Hub username + access token
+// Set DOCKERHUB_REPO below to your Docker Hub repository.
 
 pipeline {
-    agent {
-        docker {
-            image 'maven:3.9.9-eclipse-temurin-21'
-            // --network host: JVM reaches Testcontainers' published ports on localhost
-            // docker.sock: Testcontainers spawns sibling containers on the host daemon
-            // named volume: cache the Maven repo between builds
-            args '--network host ' +
-                 '-v /var/run/docker.sock:/var/run/docker.sock ' +
-                 '-v taskforge-m2:/root/.m2'
-        }
-    }
+    agent any
 
     options {
-        timeout(time: 20, unit: 'MINUTES')
+        timeout(time: 30, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '20'))
         disableConcurrentBuilds()
     }
 
     environment {
         MAVEN_ARGS = '-B -ntp'
+        // CHANGE THIS to your Docker Hub namespace/repository.
+        DOCKERHUB_REPO = 'YOUR_DOCKERHUB_USERNAME/taskforge-backend'
+        IMAGE_TAG = "${env.GIT_COMMIT ? env.GIT_COMMIT.take(7) : env.BUILD_NUMBER}"
     }
 
     stages {
@@ -43,8 +37,52 @@ pipeline {
         stage('Test') {
             steps {
                 dir('backend') {
-                    // Runs the Testcontainers migration/integration tests.
+                    // Integration tests spin up Postgres via Testcontainers (needs Docker).
                     sh 'mvn $MAVEN_ARGS verify'
+                }
+            }
+            post {
+                always {
+                    junit testResults: 'backend/target/surefire-reports/*.xml',
+                          allowEmptyResults: true
+                }
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                dir('backend') {
+                    sh 'docker build -t $DOCKERHUB_REPO:$IMAGE_TAG .'
+                }
+            }
+        }
+
+        stage('Docker Push') {
+            steps {
+                withCredentials([usernamePassword(
+                        credentialsId: 'dockerhub-creds',
+                        usernameVariable: 'DH_USER',
+                        passwordVariable: 'DH_PASS')]) {
+                    sh '''
+                        echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
+                        docker push $DOCKERHUB_REPO:$IMAGE_TAG
+                    '''
+                }
+            }
+        }
+
+        stage('Tag latest (main only)') {
+            when { branch 'main' }
+            steps {
+                withCredentials([usernamePassword(
+                        credentialsId: 'dockerhub-creds',
+                        usernameVariable: 'DH_USER',
+                        passwordVariable: 'DH_PASS')]) {
+                    sh '''
+                        echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
+                        docker tag  $DOCKERHUB_REPO:$IMAGE_TAG $DOCKERHUB_REPO:latest
+                        docker push $DOCKERHUB_REPO:latest
+                    '''
                 }
             }
         }
@@ -52,8 +90,7 @@ pipeline {
 
     post {
         always {
-            junit testResults: 'backend/target/surefire-reports/*.xml',
-                  allowEmptyResults: true
+            sh 'docker logout || true'
         }
         cleanup {
             cleanWs()
