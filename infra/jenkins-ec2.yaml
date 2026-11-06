@@ -9,11 +9,11 @@ Parameters:
     Description: Existing EC2 key pair for SSH access.
   InstanceType:
     Type: String
-    Default: t3.medium
-    AllowedValues: [t3.small, t3.medium, t3.large]
+    Default: c7i-flex.large
+    AllowedValues: [t3.small, c7i-flex.large, m7i-flex.large]
     Description: >
-      t3.medium (4 GB) recommended — Jenkins + Maven + Testcontainers Postgres
-      is tight on t3.small.
+      x86_64 types that are Free-Tier-eligible under this account's org guardrail.
+      c7i-flex.large (4 GB) is a good default; m7i-flex.large (8 GB) for more headroom.
   SshAllowedCidr:
     Type: String
     Default: 0.0.0.0/0
@@ -84,6 +84,12 @@ Resources:
         Fn::Base64: |
           #!/bin/bash
           set -euxo pipefail
+          # Swap for build headroom on smaller instances
+          dd if=/dev/zero of=/swapfile bs=1M count=2048
+          chmod 600 /swapfile
+          mkswap /swapfile
+          swapon /swapfile
+          echo '/swapfile none swap sw 0 0' >> /etc/fstab
           dnf update -y
           dnf install -y git docker java-21-amazon-corretto maven wget
           systemctl enable --now docker
