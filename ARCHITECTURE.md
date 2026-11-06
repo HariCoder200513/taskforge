@@ -154,7 +154,7 @@ An ALB cannot terminate HTTPS without a domain certificate. Two options:
 | **CloudFront → ALB** *(chosen)* | free `*.cloudfront.net` | Keeps standard ALB/ECS; can verify `X-Proxy-Secret` at the edge; caching/WAF attach later; forwards headers cleanly. | Extra hop; cache behaviors must be set to forward auth headers & not cache API. |
 | API Gateway HTTP API | `*.execute-api.amazonaws.com` | Native HTTPS; cheap; built-in throttling. | Different integration model; 29 s timeout; less natural in front of a long-running ALB/ECS service. |
 
-**Decision:** CloudFront in front of the ALB. API cache behavior: **no caching**, forward all headers/cookies, forward the proxy secret.
+**Decision (confirmed):** CloudFront in front of the ALB. API cache behavior: **no caching**, forward all headers/cookies, forward the proxy secret.
 
 ### 2.6 Locking the backend origin
 
@@ -182,7 +182,7 @@ If a domain is purchased later, the **cookie + relative-URL design stays valid**
 ### 3.1 Token model
 
 **Access token (JWT)**
-- Short-lived **10–15 min**, held **in frontend memory only**, sent as `Authorization: Bearer`.
+- Short-lived **15 min** *(decided)*, held **in frontend memory only**, sent as `Authorization: Bearer`.
 - **Pinned signing algorithm** (e.g. `RS256` or `EdDSA`); validate signature, `exp`, `iss`, `aud`; include `kid` for key rotation.
 - Signing key in **AWS Secrets Manager** (local dev: env/config).
 - **Stale-roles trade-off:** role claims can be stale until expiry. **Mitigation:** short TTL **+** server-side re-check of role/permission on sensitive operations (role changes, admin actions) rather than trusting the JWT claim alone.
@@ -191,10 +191,10 @@ If a domain is purchased later, the **cookie + relative-URL design stays valid**
 - Opaque random **256-bit** value (not a JWT), in a **Secure HttpOnly** cookie.
 - Stored in Postgres as a **SHA-256 hash** (token is already high-entropy, so no Argon2/BCrypt needed).
 - **Rotated on every refresh**; old token marked `used`.
-- **Sliding expiry 7–14 days** + **absolute session cap ~30 days**.
+- **Sliding expiry 14 days** + **absolute session cap 30 days** *(decided)*.
 - **Revoked on logout.**
 - **Replay detection:** reuse of an already-rotated token → **revoke the whole token family** and force re-login; audit-logged.
-- **Multi-tab race:** short server-side **grace window** on the just-rotated token (reuse within the window by the same family is not treated as attack) + client-side **single-flight** refresh (Web Locks API / BroadcastChannel).
+- **Multi-tab race:** **30 s** server-side **grace window** *(decided)* on the just-rotated token (reuse within the window by the same family is not treated as attack) + client-side **single-flight** refresh (Web Locks API / BroadcastChannel).
 
 ### 3.2 CSRF for cookie endpoints (`/refresh`, `/logout`)
 
@@ -226,7 +226,7 @@ Client ──POST /register {email,password,name}──► API
                          API: validate → Argon2id(password) → insert user (status=ACTIVE)
                               → attach role VIEWER → audit(REGISTER)
        ◄──────────── 201 {id,email,name,roles:[VIEWER]} ──────────
-(No auto-login: client then calls /login, or we return tokens — chosen: no auto-login for clarity.)
+(No auto-login (decided): client then calls /login. Keeps register/login single-purpose.)
 ```
 
 **Login**
@@ -424,7 +424,7 @@ Unique on `(queue_id, user_id, permission)`; index on `(user_id)`.
 > 3. the user holds **`VIEW`** (or higher) permission on `job.queue_id` via `queue_permissions`.
 >
 > Otherwise → **404**. The same predicate filters `GET /jobs` list results.
-> **Submit** requires `SUBMIT` on the target queue (or ADMIN). **Retry** requires `RETRY` (or ownership + role DEVELOPER, per policy) or ADMIN. **Redrive** from DLQ is ADMIN-only.
+> **Submit** requires `SUBMIT` on the target queue (or ADMIN). **Retry** requires `RETRY` on the job's queue, or ADMIN (ownership alone does not grant retry). **Redrive** from DLQ is ADMIN-only.
 
 ---
 
@@ -434,7 +434,7 @@ Unique on `(queue_id, user_id, permission)`; index on `(user_id)`.
 |---|---|---|
 | **Password hashing** | **Argon2id** (memory-hard). Params target ~**64 MB, t=3, p=1**, tune to ~250 ms on prod hardware. BCrypt (cost ≥12) as fallback if Argon2 lib unavailable. | Argon2 resists GPU cracking better; higher memory per hash — size the auth instances accordingly. |
 | **Password policy** | Min length (≥12), reject breached/common passwords (local list), no composition nags. | Length > complexity rules. |
-| **Brute-force / rate limiting** | **Bucket4j** (Redis- or Postgres-backed), **per-account + per-IP**, **progressive delay** (not hard lockout). AWS WAF in front later. | Progressive delay prevents attackers **locking out real users**; hard lockout is a DoS vector. Per-IP uses the trusted forwarded IP (§2.7). |
+| **Brute-force / rate limiting** | **Bucket4j**, **Postgres-backed for v1** *(decided)* (migrate to Redis when login volume grows), **per-account + per-IP**, **progressive delay** (not hard lockout). AWS WAF in front later. | Progressive delay prevents attackers **locking out real users**; hard lockout is a DoS vector. Per-IP uses the trusted forwarded IP (§2.7). Postgres store avoids provisioning ElastiCache before it's needed. |
 | **JWT validation** | Pinned alg, verify sig/`exp`/`iss`/`aud`, `kid`-based key rotation. | Pinning alg blocks `alg:none` / alg-confusion attacks. |
 | **Refresh replay** | Opaque, rotated, family revocation on reuse + grace window for multi-tab. | Grace window is a deliberate small weakening to avoid false alarms. |
 | **CSRF** | SameSite=Strict **+** custom header/double-submit **+** Origin check on cookie endpoints. | Defense in depth; SameSite alone insufficient. |
@@ -523,13 +523,13 @@ Strict **CSP** (access token in memory → XSS is primary threat), **HSTS**, `X-
 - **Stale JWT roles** until expiry → mitigated by short TTL + server-side re-check on sensitive ops.
 - **CloudFront header/caching misconfig** could cache authenticated responses → explicit no-cache + forward-all-headers behavior for `/api/*`.
 
-### 9.2 Open questions (need your decision)
-1. **Backend edge:** confirm **CloudFront → ALB** (recommended) vs API Gateway HTTP API.
-2. **Login response:** confirm **no auto-login on register** (client calls `/login` after) vs returning tokens from `/register`.
-3. **Rate-limit store:** **Redis** (needs ElastiCache) vs **Postgres-backed** Bucket4j for v1.
-4. **Grace window length** for multi-tab refresh (proposed: 10–30 s) — confirm value.
-5. **Retry permission semantics:** does DEVELOPER retry require explicit `RETRY` queue permission, or ownership + role? (§4.3 assumes `RETRY` perm or ADMIN.)
-6. **Access-token TTL** exact value within 10–15 min, and **refresh sliding expiry** 7 vs 14 days.
+### 9.2 Resolved decisions (approved 2026-11-06)
+1. **Backend edge:** **CloudFront → ALB** (free `*.cloudfront.net` HTTPS; verifies `X-Proxy-Secret`; no-cache + forward-all-headers on `/api/*`).
+2. **Register response:** **No auto-login.** `/register` → `201` with the user; client then calls `/login`.
+3. **Rate-limit store:** **Postgres-backed Bucket4j for v1**; migrate to Redis/ElastiCache when login volume grows.
+4. **Multi-tab grace window:** **30 s**.
+5. **Retry permission:** DEVELOPER retry requires explicit **`RETRY`** permission on the job's queue, **or** ADMIN. Ownership alone does not grant retry.
+6. **Token lifetimes:** access **15 min**, refresh **sliding 14 days**, **absolute cap 30 days**. Stale JWT roles mitigated by short TTL + server-side re-check on sensitive ops.
 
 ### 9.3 Deferred (future milestones)
 Password reset · email verification · logout-all-devices · MFA · OAuth/social login · organizations/workspaces multi-tenancy (schema hook `workspace_id` already added) · AWS WAF · multi-region deployment · custom domain (design already compatible).
