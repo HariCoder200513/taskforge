@@ -13,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.TestPropertySource;
 
 import java.util.Map;
 
@@ -21,7 +22,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * RBAC matrix + IDOR coverage for the queue/job APIs. Roles beyond VIEWER are
  * assigned directly in the DB (no admin role endpoint yet). Requires Docker.
+ *
+ * Overrides the 2s access-token TTL from application-test.yml (that short TTL is
+ * for the auth expiry test) — these multi-step tests need tokens that outlive a
+ * sequence of calls.
  */
+@TestPropertySource(properties = "auth.jwt.access-token-ttl=30m")
 class JobQueueRbacIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
