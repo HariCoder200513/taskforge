@@ -29,6 +29,7 @@ public class AuditService {
         repository.save(new AuditLog(userId, action, resourceType, resourceId, ip, requestId, metadata));
     }
 
+    
     public void record(String action, UUID userId, String ip, String requestId) {
         record(action, userId, null, null, ip, requestId, null);
     }
