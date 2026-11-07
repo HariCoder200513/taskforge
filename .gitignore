@@ -24,3 +24,6 @@ dist/
 
 # Logs
 *.log
+
+# Local-only study notes (never commit)
+BACKEND_NOTES.md
