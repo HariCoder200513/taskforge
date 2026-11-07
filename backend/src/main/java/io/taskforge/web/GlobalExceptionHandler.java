@@ -3,12 +3,14 @@ package io.taskforge.web;
 import io.taskforge.auth.error.AuthExceptions.EmailAlreadyExistsException;
 import io.taskforge.auth.error.AuthExceptions.InvalidCredentialsException;
 import io.taskforge.auth.error.AuthExceptions.InvalidRefreshTokenException;
+import io.taskforge.auth.error.AuthExceptions.ResourceNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -34,6 +36,22 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(InvalidRefreshTokenException.class)
     public ResponseEntity<ApiError> badRefresh(InvalidRefreshTokenException ex, HttpServletRequest req) {
         return build(HttpStatus.UNAUTHORIZED, "INVALID_REFRESH_TOKEN", ex.getMessage(), req);
+    }
+
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ApiError> notFound(ResourceNotFoundException ex, HttpServletRequest req) {
+        return build(HttpStatus.NOT_FOUND, "NOT_FOUND", ex.getMessage(), req);
+    }
+
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<ApiError> conflict(ConflictException ex, HttpServletRequest req) {
+        return build(HttpStatus.CONFLICT, "CONFLICT", ex.getMessage(), req);
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiError> accessDenied(AccessDeniedException ex, HttpServletRequest req) {
+        // Role gate (@PreAuthorize) or resource-permission denial during MVC handling.
+        return build(HttpStatus.FORBIDDEN, "FORBIDDEN", "You do not have permission to perform this action", req);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

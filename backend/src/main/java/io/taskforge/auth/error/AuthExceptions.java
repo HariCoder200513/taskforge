@@ -15,6 +15,17 @@ public final class AuthExceptions {
         }
     }
 
+    /**
+     * Resource missing, or present but not visible to this user → 404. We return
+     * 404 (not 403) for resources a user may not see, to prevent ID enumeration
+     * (ARCHITECTURE §4.2).
+     */
+    public static class ResourceNotFoundException extends RuntimeException {
+        public ResourceNotFoundException(String message) {
+            super(message);
+        }
+    }
+
     /** Wrong email/password, or disabled account → 401 (generic, never reveals which). */
     public static class InvalidCredentialsException extends RuntimeException {
         public InvalidCredentialsException() {
