@@ -6,8 +6,14 @@
 // — the EC2 bootstrap in infra/jenkins-ec2.yaml provisions exactly that.
 //
 // Required Jenkins credentials:
-//   - dockerhub-creds : Username/Password = Docker Hub username + access token
-// Set DOCKERHUB_REPO below to your Docker Hub repository.
+//   - dockerhub-creds    : Username/Password = Docker Hub username + access token
+//   - taskforge-host-ssh : SSH Username with private key (username "ubuntu",
+//                          key = the host's .pem) — used by the Deploy stage
+// Set DOCKERHUB_REPO and DEPLOY_HOST below.
+//
+// The Deploy stage SSHes to the API host and does pull + restart. Runtime config
+// (Neon creds etc.) lives ONLY on the host at /opt/taskforge/taskforge.env — never
+// in this repo. See deploy/taskforge.env.example and docs/DEPLOYMENT.md.
 
 pipeline {
     agent any
@@ -25,6 +31,12 @@ pipeline {
         MAVEN_ARGS = '-B -ntp'
         DOCKERHUB_REPO = 'haridockersabre/taskforge-backend'
         IMAGE_TAG = "${env.GIT_COMMIT ? env.GIT_COMMIT.take(7) : env.BUILD_NUMBER}"
+        // API host for the Deploy stage. Public IP changes on stop/start — use an
+        // Elastic IP (or a DNS name) to keep this stable.
+        DEPLOY_HOST = '15.135.173.241'
+        DEPLOY_USER = 'ubuntu'
+        CONTAINER_NAME = 'taskforge-api'
+        HOST_ENV_FILE = '/opt/taskforge/taskforge.env'
     }
 
     stages {
@@ -84,6 +96,29 @@ pipeline {
                         echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
                         docker tag  $DOCKERHUB_REPO:$IMAGE_TAG $DOCKERHUB_REPO:latest
                         docker push $DOCKERHUB_REPO:latest
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy') {
+            when { branch 'main' }
+            steps {
+                // SSH to the host and roll the container to the new image. Runtime
+                // config comes from $HOST_ENV_FILE on the host (secrets stay there).
+                withCredentials([sshUserPrivateKey(
+                        credentialsId: 'taskforge-host-ssh',
+                        keyFileVariable: 'SSH_KEY',
+                        usernameVariable: 'SSH_USER')]) {
+                    sh '''
+                        ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                            "$SSH_USER@$DEPLOY_HOST" \
+                            "sudo docker pull $DOCKERHUB_REPO:$IMAGE_TAG \
+                             && sudo docker rm -f $CONTAINER_NAME 2>/dev/null || true; \
+                             sudo docker run -d --name $CONTAINER_NAME --restart unless-stopped \
+                                 -p 80:8080 --env-file $HOST_ENV_FILE \
+                                 $DOCKERHUB_REPO:$IMAGE_TAG \
+                             && sudo docker image prune -f"
                     '''
                 }
             }
