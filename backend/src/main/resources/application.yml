@@ -67,6 +67,10 @@ auth:
     # requests carrying this secret (injected by the Netlify proxy).
     secret: ${AUTH_PROXY_SECRET:}
     client-ip-header: X-Nf-Client-Connection-Ip
+  bootstrap:
+    # Promote this already-registered user to ADMIN at startup (idempotent).
+    # Register the user normally first, set this env var, (re)start the app.
+    admin-email: ${AUTH_BOOTSTRAP_ADMIN_EMAIL:}
 
 # Worker/queue engine. Jobs are claimed with FOR UPDATE SKIP LOCKED (safe across
 # replicas), retried with exponential backoff, and dead-lettered once attempts
