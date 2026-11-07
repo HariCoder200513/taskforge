@@ -77,17 +77,35 @@ One-time setup to enable it:
 
 1. **Host env file** — create `/opt/taskforge/taskforge.env` on the API host from
    `deploy/taskforge.env.example` (root-owned, `chmod 600`). Holds the Neon creds etc.
-   Secrets live here only, never in the repo.
+   Secrets live here only, never in the repo. (Or let the pipeline push it — see
+   "New / changed host IP" below.)
 2. **Host Docker login** — the host must be logged in to Docker Hub to pull the
    private image: `sudo docker login -u <user>` (re-run if the token is rotated).
 3. **Jenkins SSH credential** — add id **`taskforge-host-ssh`**, kind *SSH Username
    with private key*, username `ubuntu`, private key = the host's `.pem`.
-4. **Jenkinsfile** — set `DEPLOY_HOST` to the host IP. The public IP changes on
-   stop/start, so allocate an **Elastic IP** (or a DNS name) and use that.
+4. **Jenkins secret file** (optional, for pushing the env file) — add id
+   **`taskforge-host-env`**, kind *Secret file*, uploading your real
+   `taskforge.env`. Used only when the **`UPDATE_ENV_FILE`** build parameter is set.
 5. Host security group must allow SSH (22) from the Jenkins box.
 
 After a push to `main`: build → test → image pushed → **host pulls + restarts** the
-container automatically.
+container automatically (using the default `DEPLOY_HOST`).
+
+### New / changed host IP
+
+The host's public IP changes on stop/start. The Deploy stage takes two build
+parameters (visible under **Build with Parameters** from the second build onward):
+
+- **`DEPLOY_HOST`** — the IP/DNS to deploy to. Override it to point at the new host.
+- **`UPDATE_ENV_FILE`** — tick this on a fresh host so the pipeline copies the env
+  file to `/opt/taskforge/taskforge.env` over SSH (from the `taskforge-host-env`
+  secret file) before rolling the container.
+
+So when the IP changes: **Build with Parameters** → set `DEPLOY_HOST` to the new IP,
+tick `UPDATE_ENV_FILE` (first deploy to that host), Build. A push-triggered build
+always uses the defaults, so to avoid this each time, allocate an **Elastic IP** (or
+a DNS name) and set it as the `DEPLOY_HOST` default. A brand-new host also needs the
+SSH key authorized, Docker installed + logged in, and SG port 22 open to Jenkins.
 
 ## Security notes
 
