@@ -30,7 +30,7 @@ pipeline {
         // (On a multibranch job the field appears from the second build on —
         // the first run registers the parameter.)
         string(name: 'DEPLOY_HOST',
-               defaultValue: '15.135.173.241',
+               defaultValue: '3.27.97.82',
                description: 'API host IP/DNS the Deploy stage SSHes to and rolls the container on')
         // Tick this when deploying to a fresh host (new IP): the Deploy stage
         // first copies the env file to the host over SSH, from the Jenkins
@@ -52,7 +52,7 @@ pipeline {
         // the default on the first multibranch run, before params register).
         // Public IP changes on stop/start — override the param, or use an
         // Elastic IP / DNS name, to keep this stable.
-        DEPLOY_HOST = "${params.DEPLOY_HOST ?: '15.135.173.241'}"
+        DEPLOY_HOST = "${params.DEPLOY_HOST ?: '3.27.97.82'}"
         DEPLOY_USER = 'ubuntu'
         CONTAINER_NAME = 'taskforge-api'
         HOST_ENV_FILE = '/opt/taskforge/taskforge.env'

@@ -15,18 +15,18 @@
   NODE_VERSION = "20"
 
 # --- API reverse proxy ---------------------------------------------------------
-# IMPORTANT: the EC2 public IP changes on stop/start. Point this at a STABLE
-# address — an Elastic IP or a DNS name — and update it if it ever changes.
-# These rules MUST come before the SPA fallback below (Netlify uses first match).
+# API host = the Elastic IP 3.27.97.82 (permanently bound to the API EC2, so it
+# survives stop/start — no more drift). These rules MUST come before the SPA
+# fallback below (Netlify uses first match).
 [[redirects]]
   from = "/api/*"
-  to = "http://15.134.137.232/api/:splat"
+  to = "http://3.27.97.82/api/:splat"
   status = 200
   force = true
 
 [[redirects]]
   from = "/actuator/*"
-  to = "http://15.134.137.232/actuator/:splat"
+  to = "http://3.27.97.82/actuator/:splat"
   status = 200
   force = true
 
