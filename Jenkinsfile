@@ -32,6 +32,13 @@ pipeline {
         string(name: 'DEPLOY_HOST',
                defaultValue: '15.135.173.241',
                description: 'API host IP/DNS the Deploy stage SSHes to and rolls the container on')
+        // Tick this when deploying to a fresh host (new IP): the Deploy stage
+        // first copies the env file to the host over SSH, from the Jenkins
+        // "Secret file" credential 'taskforge-host-env'. Leave off for a normal
+        // redeploy where the host already has /opt/taskforge/taskforge.env.
+        booleanParam(name: 'UPDATE_ENV_FILE',
+               defaultValue: false,
+               description: 'Push the env file (Jenkins secret file taskforge-host-env) to the host before deploying — use for a new host')
     }
 
     environment {
@@ -116,22 +123,39 @@ pipeline {
         stage('Deploy') {
             when { branch 'main' }
             steps {
-                // SSH to the host and roll the container to the new image. Runtime
-                // config comes from $HOST_ENV_FILE on the host (secrets stay there).
+                // SSH to $DEPLOY_HOST and roll the container to the new image.
+                // Runtime config lives in $HOST_ENV_FILE on the host (secrets stay
+                // off the repo). When UPDATE_ENV_FILE is set, the env file is first
+                // pushed from the Jenkins secret-file credential — needed on a fresh
+                // host that doesn't have it yet. Credentials are referenced only as
+                // shell env vars (single-quoted sh), never interpolated into Groovy.
                 withCredentials([sshUserPrivateKey(
                         credentialsId: 'taskforge-host-ssh',
                         keyFileVariable: 'SSH_KEY',
                         usernameVariable: 'SSH_USER')]) {
-                    sh '''
-                        ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-                            "$SSH_USER@$DEPLOY_HOST" \
-                            "sudo docker pull $DOCKERHUB_REPO:$IMAGE_TAG \
-                             && sudo docker rm -f $CONTAINER_NAME 2>/dev/null || true; \
-                             sudo docker run -d --name $CONTAINER_NAME --restart unless-stopped \
-                                 -p 80:8080 --env-file $HOST_ENV_FILE \
-                                 $DOCKERHUB_REPO:$IMAGE_TAG \
-                             && sudo docker image prune -f"
-                    '''
+                    script {
+                        if (params.UPDATE_ENV_FILE) {
+                            withCredentials([file(credentialsId: 'taskforge-host-env', variable: 'ENV_FILE')]) {
+                                sh '''
+                                    SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+                                    ssh -i "$SSH_KEY" $SSH_OPTS "$SSH_USER@$DEPLOY_HOST" "sudo mkdir -p $(dirname $HOST_ENV_FILE)"
+                                    scp -i "$SSH_KEY" $SSH_OPTS "$ENV_FILE" "$SSH_USER@$DEPLOY_HOST:/tmp/taskforge.env"
+                                    ssh -i "$SSH_KEY" $SSH_OPTS "$SSH_USER@$DEPLOY_HOST" \
+                                        "sudo mv /tmp/taskforge.env $HOST_ENV_FILE && sudo chmod 600 $HOST_ENV_FILE"
+                                '''
+                            }
+                        }
+                        sh '''
+                            SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+                            ssh -i "$SSH_KEY" $SSH_OPTS "$SSH_USER@$DEPLOY_HOST" \
+                                "sudo docker pull $DOCKERHUB_REPO:$IMAGE_TAG \
+                                 && sudo docker rm -f $CONTAINER_NAME 2>/dev/null || true; \
+                                 sudo docker run -d --name $CONTAINER_NAME --restart unless-stopped \
+                                     -p 80:8080 --env-file $HOST_ENV_FILE \
+                                     $DOCKERHUB_REPO:$IMAGE_TAG \
+                                 && sudo docker image prune -f"
+                        '''
+                    }
                 }
             }
         }
