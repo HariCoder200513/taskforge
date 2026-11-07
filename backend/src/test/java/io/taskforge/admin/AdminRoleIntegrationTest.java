@@ -37,9 +37,13 @@ class AdminRoleIntegrationTest extends AbstractIntegrationTest {
 
     private String adminToken;
     private String adminId;
+    private String ns;
 
     @BeforeEach
     void setUp() {
+        // Unique email namespace per method — @BeforeEach runs before every test,
+        // and the test DB is shared, so fixed emails would collide (409) on reuse.
+        ns = "adm-" + System.nanoTime() + "-";
         // Isolate the admin set so countByRoleName('ADMIN') is deterministic here.
         jdbc.update("delete from user_roles where role_id = (select id from roles where name = 'ADMIN')");
         adminId = register("admin");
@@ -100,8 +104,8 @@ class AdminRoleIntegrationTest extends AbstractIntegrationTest {
 
     // ---- helpers ------------------------------------------------------------
 
-    private static String email(String local) {
-        return "adm-" + local + "@example.com";
+    private String email(String local) {
+        return ns + local + "@example.com";
     }
 
     private String register(String local) {
