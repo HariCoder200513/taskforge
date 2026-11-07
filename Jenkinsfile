@@ -24,6 +24,16 @@ pipeline {
         disableConcurrentBuilds()
     }
 
+    parameters {
+        // Target host for the Deploy stage. Override per build via
+        // "Build with Parameters"; the default is the current API host.
+        // (On a multibranch job the field appears from the second build on —
+        // the first run registers the parameter.)
+        string(name: 'DEPLOY_HOST',
+               defaultValue: '15.135.173.241',
+               description: 'API host IP/DNS the Deploy stage SSHes to and rolls the container on')
+    }
+
     environment {
         // The node's default Maven runs on Java 17; force JDK 21 for the build.
         JAVA_HOME = '/usr/lib/jvm/java-21-amazon-corretto'
@@ -31,9 +41,11 @@ pipeline {
         MAVEN_ARGS = '-B -ntp'
         DOCKERHUB_REPO = 'haridockersabre/taskforge-backend'
         IMAGE_TAG = "${env.GIT_COMMIT ? env.GIT_COMMIT.take(7) : env.BUILD_NUMBER}"
-        // API host for the Deploy stage. Public IP changes on stop/start — use an
-        // Elastic IP (or a DNS name) to keep this stable.
-        DEPLOY_HOST = '15.135.173.241'
+        // API host for the Deploy stage, from the build parameter (falls back to
+        // the default on the first multibranch run, before params register).
+        // Public IP changes on stop/start — override the param, or use an
+        // Elastic IP / DNS name, to keep this stable.
+        DEPLOY_HOST = "${params.DEPLOY_HOST ?: '15.135.173.241'}"
         DEPLOY_USER = 'ubuntu'
         CONTAINER_NAME = 'taskforge-api'
         HOST_ENV_FILE = '/opt/taskforge/taskforge.env'
