@@ -8,3 +8,16 @@ auth:
   refresh:
     cookie-secure: false   # cookie round-trips over the test's plain HTTP client
     grace-window: 1s       # small window: multi-tab reuse within 1s, replay after
+
+# Worker schedulers OFF by default in tests — the engine is driven explicitly so
+# assertions are deterministic. Backoff/lease values matter only where a test
+# overrides worker.enabled or calls the engine directly; defaults below keep any
+# such run fast. Individual tests tighten these via @TestPropertySource.
+worker:
+  enabled: false
+  poll-interval: 1s
+  reap-interval: 1s
+  batch-size: 10
+  retry-base-backoff: 0s
+  retry-max-backoff: 0s
+  lease-timeout: 1s

@@ -67,3 +67,16 @@ auth:
     # requests carrying this secret (injected by the Netlify proxy).
     secret: ${AUTH_PROXY_SECRET:}
     client-ip-header: X-Nf-Client-Connection-Ip
+
+# Worker/queue engine. Jobs are claimed with FOR UPDATE SKIP LOCKED (safe across
+# replicas), retried with exponential backoff, and dead-lettered once attempts
+# are exhausted; a reaper requeues jobs abandoned by crashed workers.
+worker:
+  enabled: ${WORKER_ENABLED:true}
+  poll-interval: 1s
+  reap-interval: 30s
+  batch-size: 5
+  retry-base-backoff: 10s
+  retry-max-backoff: 10m
+  # A RUNNING job with no heartbeat for this long is treated as abandoned.
+  lease-timeout: 2m

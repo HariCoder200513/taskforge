@@ -34,10 +34,12 @@ public final class JobQueueDtos {
             @NotNull Map<String, Object> payload
     ) {}
 
-    public record JobDto(String id, String queueId, String ownerId, String status, Instant createdAt) {
+    public record JobDto(String id, String queueId, String ownerId, String status,
+                         int attempts, int maxAttempts, String lastError, Instant createdAt) {
         public static JobDto from(Job j) {
             return new JobDto(j.getId().toString(), j.getQueueId().toString(),
-                    j.getOwnerId().toString(), j.getStatus().name(), j.getCreatedAt());
+                    j.getOwnerId().toString(), j.getStatus().name(),
+                    j.getAttempts(), j.getMaxAttempts(), j.getLastError(), j.getCreatedAt());
         }
     }
 }

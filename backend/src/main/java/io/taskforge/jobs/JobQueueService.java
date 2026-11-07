@@ -112,7 +112,7 @@ public class JobQueueService {
                         List.of(QueuePermissionType.RETRY.name()))) {
             throw new AccessDeniedException("You do not have RETRY permission on this queue");
         }
-        j.markForRetry();
+        j.manualRetry(java.time.Instant.now());
         return jobs.save(j);
     }
 
