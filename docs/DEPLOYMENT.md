@@ -64,6 +64,31 @@ auto-discovers the root `Jenkinsfile` and builds every branch/PR. Enable
 Push a commit; Jenkins should start a build within seconds, ending with the image
 pushed to Docker Hub (`DOCKERHUB_REPO:<git-sha>`, plus `:latest` on `main`).
 
+## Auto-deploy (the Deploy stage)
+
+On `main`, after the image is pushed, the Jenkins **Deploy** stage SSHes to the API
+host and rolls the container to the new image:
+
+```
+docker pull <repo>:<sha>  →  docker rm -f taskforge-api  →  docker run ... --env-file /opt/taskforge/taskforge.env
+```
+
+One-time setup to enable it:
+
+1. **Host env file** — create `/opt/taskforge/taskforge.env` on the API host from
+   `deploy/taskforge.env.example` (root-owned, `chmod 600`). Holds the Neon creds etc.
+   Secrets live here only, never in the repo.
+2. **Host Docker login** — the host must be logged in to Docker Hub to pull the
+   private image: `sudo docker login -u <user>` (re-run if the token is rotated).
+3. **Jenkins SSH credential** — add id **`taskforge-host-ssh`**, kind *SSH Username
+   with private key*, username `ubuntu`, private key = the host's `.pem`.
+4. **Jenkinsfile** — set `DEPLOY_HOST` to the host IP. The public IP changes on
+   stop/start, so allocate an **Elastic IP** (or a DNS name) and use that.
+5. Host security group must allow SSH (22) from the Jenkins box.
+
+After a push to `main`: build → test → image pushed → **host pulls + restarts** the
+container automatically.
+
 ## Security notes
 
 - Narrow `SshAllowedCidr` to your IP. Keep 8080 reachable for GitHub webhooks, or
