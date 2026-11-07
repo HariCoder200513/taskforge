@@ -48,6 +48,10 @@ class WorkerEngineIntegrationTest extends AbstractIntegrationTest {
 
     @BeforeEach
     void seedOwnerAndQueue() {
+        // The Postgres container is shared across all test classes/methods, and
+        // the engine claims from the global job pool (one shared queue, by design).
+        // Clear jobs so each test sees only the rows it inserts.
+        jdbc.update("delete from jobs");
         ownerId = UUID.randomUUID();
         queueId = UUID.randomUUID();
         String tag = Long.toString(System.nanoTime());
@@ -133,15 +137,15 @@ class WorkerEngineIntegrationTest extends AbstractIntegrationTest {
         Future<List<UUID>> b = pool.submit(claimer);
         start.countDown();
 
-        List<UUID> all = new ArrayList<>(a.get());
-        List<UUID> bIds = b.get();
+        List<UUID> combined = new ArrayList<>(a.get());
+        combined.addAll(b.get());
         pool.shutdown();
 
-        // No id appears in both claims (SKIP LOCKED), and together they take all n.
-        assertThat(all).doesNotContainAnyElementsOf(bIds);
-        all.addAll(bIds);
-        assertThat(all).hasSize(n);
-        assertThat(all).doesNotHaveDuplicates();
+        // Together the two workers claimed every job exactly once: no duplicates
+        // means no job was claimed by both (SKIP LOCKED), and size == n means none
+        // was left behind. Tolerant of a 0/all split if one txn commits first.
+        assertThat(combined).hasSize(n);
+        assertThat(combined).doesNotHaveDuplicates();
     }
 
     // ---- helpers ------------------------------------------------------------
