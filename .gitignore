@@ -22,6 +22,10 @@ dist/
 .env.*
 !.env.example
 
+# Backend local env (real secrets) — keep the example, never commit the real file
+backend/.env
+!backend/.env.example
+
 # Logs
 *.log
 
