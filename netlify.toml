@@ -1,0 +1,37 @@
+# Netlify config for the TaskForge dashboard.
+#
+# Connect this repo in Netlify (Add new site → Import from Git). Netlify reads
+# this file: it builds the SPA in frontend/ and reverse-proxies /api and /actuator
+# to the API host, so the dashboard and API are SAME-ORIGIN in the browser — no
+# CORS, and the refresh cookie stays first-party. The SPA code calls /api/... with
+# no hard-coded origin, exactly as in local dev (where Vite proxies instead).
+
+[build]
+  base = "frontend"
+  command = "npm run build"
+  publish = "dist"          # relative to base → frontend/dist
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# --- API reverse proxy ---------------------------------------------------------
+# IMPORTANT: the EC2 public IP changes on stop/start. Point this at a STABLE
+# address — an Elastic IP or a DNS name — and update it if it ever changes.
+# These rules MUST come before the SPA fallback below (Netlify uses first match).
+[[redirects]]
+  from = "/api/*"
+  to = "http://15.134.137.232/api/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/actuator/*"
+  to = "http://15.134.137.232/actuator/:splat"
+  status = 200
+  force = true
+
+# --- SPA fallback: every other path serves the app shell (client-side routing) -
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
