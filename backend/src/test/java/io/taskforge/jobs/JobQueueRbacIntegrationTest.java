@@ -128,13 +128,19 @@ class JobQueueRbacIntegrationTest extends AbstractIntegrationTest {
         return post("/api/v1/jobs/" + id + "/retry", null, token);
     }
 
+    // Unique email namespace so these users never collide with other test classes
+    // sharing the same database.
+    private static String email(String local) {
+        return "rbac-" + local + "@example.com";
+    }
+
     private String devUserId() {
-        return jdbc.queryForObject("select id::text from users where email = ?", String.class, "dev@example.com");
+        return jdbc.queryForObject("select id::text from users where email = ?", String.class, email("dev"));
     }
 
     /** Register a user, assign the role in the DB, and return a logged-in access token. */
     private String userWithRole(String local, String role) {
-        String email = local + "@example.com";
+        String email = email(local);
         post("/api/v1/auth/register",
                 Map.of("email", email, "password", "sup3rsecretpwd", "name", local), null);
         if (!role.equals("VIEWER")) {
